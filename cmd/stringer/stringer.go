@@ -96,6 +96,7 @@ var (
 	trimprefix  = flag.String("trimprefix", "", "trim the `prefix` from the generated constant names")
 	linecomment = flag.Bool("linecomment", false, "use line comment text as printed text when present")
 	buildTags   = flag.String("tags", "", "comma-separated list of build tags to apply")
+	i18n        = flag.Bool("i18n", false, "extract text via gotext")
 )
 
 // Usage is a replacement usage function for the flags package.
@@ -175,7 +176,14 @@ func main() {
 		g.Printf("\n")
 		g.Printf("package %s", g.pkg.name)
 		g.Printf("\n")
-		g.Printf("import \"strconv\"\n") // Used by all methods.
+		if *i18n {
+			g.Printf("import (\n")
+			g.Printf("\"strconv\"\n")
+			g.Printf("\"golang.org/x/text/message\"\n")
+			g.Printf(")\n")
+		} else {
+			g.Printf("import \"strconv\"\n") // Used by all methods.
+		}
 
 		// Run generate for types that can be found. Keep the rest for the remainingTypes iteration.
 		var foundTypes, remainingTypes []string
@@ -346,6 +354,7 @@ func findValues(typeName string, pkg *Package) []Value {
 // generate produces the String method for the named type.
 func (g *Generator) generate(typeName string, values []Value) {
 	// Generate code that will fail if the constants change value.
+	g.Printf("\n")
 	g.Printf("func _() {\n")
 	g.Printf("\t// An \"invalid array index\" compiler error signifies that the constant values have changed.\n")
 	g.Printf("\t// Re-run the stringer command to generate them again.\n")
@@ -374,6 +383,10 @@ func (g *Generator) generate(typeName string, values []Value) {
 		g.buildMultipleRuns(runs, typeName)
 	default:
 		g.buildMap(runs, typeName)
+	}
+
+	if *i18n {
+		g.appendI18n(values)
 	}
 }
 
@@ -425,6 +438,7 @@ func (g *Generator) format() []byte {
 // Value represents a declared constant.
 type Value struct {
 	originalName string // The name of the constant.
+	hasComment   bool   // Whether has comment
 	name         string // The name with trimmed prefix.
 	// The value is stored as a bit pattern alone. The boolean tells us
 	// whether to interpret it as an int64 or a uint64; the only place
@@ -540,6 +554,7 @@ func (f *File) genDecl(node ast.Node) bool {
 			}
 			if c := vspec.Comment; f.lineComment && c != nil && len(c.List) == 1 {
 				v.name = strings.TrimSpace(c.Text())
+				v.hasComment = true
 			} else {
 				v.name = strings.TrimPrefix(v.originalName, f.trimPrefix)
 			}
@@ -734,3 +749,14 @@ const stringMap = `func (i %[1]s) String() string {
 	return "%[1]s(" + strconv.FormatInt(int64(i), 10) + ")"
 }
 `
+
+func (g *Generator) appendI18n(values []Value) {
+	g.Printf("\n")
+	g.Printf("func _(p *message.Printer) {\n")
+	for _, v := range values {
+		if v.hasComment && v.name != "" {
+			g.Printf("_ = p.Sprintf(\"%s\")\n", v.name)
+		}
+	}
+	g.Printf("}\n")
+}
