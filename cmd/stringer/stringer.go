@@ -386,7 +386,7 @@ func (g *Generator) generate(typeName string, values []Value) {
 	}
 
 	if *i18n {
-		g.appendI18n(values)
+		g.appendI18n(values, typeName)
 	}
 }
 
@@ -750,9 +750,9 @@ const stringMap = `func (i %[1]s) String() string {
 }
 `
 
-func (g *Generator) appendI18n(values []Value) {
+func (g *Generator) appendI18n(values []Value, typeName string) {
 	g.Printf("\n")
-	g.Printf("func _(p *message.Printer) {\n")
+	g.Printf("func _%s_i18n(p *message.Printer) {\n", typeName)
 	for _, v := range values {
 		if v.hasComment && v.name != "" {
 			g.Printf("_ = p.Sprintf(\"%s\")\n", v.name)
